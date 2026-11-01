@@ -125,7 +125,7 @@ class HostUI {
                 <label for="max-tokens-input">Max Tokens</label>
                 <span id="max-tokens-val" class="param-val">100</span>
               </div>
-              <input type="number" id="max-tokens-input" min="10" max="400" value="100" />
+              <input type="number" id="max-tokens-input" min="1" max="512" value="100" />
             </div>
           </div>
 
@@ -146,7 +146,7 @@ class HostUI {
               <span id="stat-tps" class="telemetry-value">-- <small>TPS</small></span>
             </div>
             <div class="telemetry-card">
-              <span class="telemetry-label">Ring RTT</span>
+              <span class="telemetry-label">Remote compute + transit</span>
               <span id="stat-rtt" class="telemetry-value">-- <small>ms</small></span>
             </div>
             <div class="telemetry-card">
@@ -215,7 +215,7 @@ class HostUI {
     q('generate-btn').addEventListener('click', () => {
       if (this._onGenerateCb) {
         const prompt = q('prompt-input').value;
-        const maxTokens = parseInt(q('max-tokens-input').value, 10) || 100;
+        const maxTokens = Number(q('max-tokens-input').value);
         const temperature = parseFloat(q('temp-slider').value) || 0.0;
         this._onGenerateCb({ prompt, maxTokens, temperature });
       }
@@ -266,20 +266,11 @@ class HostUI {
       }
     }
 
-    // Canvas / Img Fallback using lightweight QR generator endpoint or SVG block
-    const img = document.createElement('img');
-    img.src = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(roomUrl)}`;
-    img.alt = `QR Code for room ${roomId}`;
-    img.className = 'qr-img-element';
-    img.onerror = () => {
-      qrDisplay.innerHTML = `
-        <div class="qr-offline-card">
-          <p>Scan with other phone or open:</p>
-          <a href="${roomUrl}" target="_blank" class="qr-url-link">${roomUrl}</a>
-        </div>
-      `;
-    };
-    qrDisplay.appendChild(img);
+    const link = document.createElement('a');
+    link.href = roomUrl;
+    link.textContent = `Open this join link: ${roomUrl}`;
+    qrDisplay.appendChild(link);
+
   }
 
   // ── Dynamic Canvas Ring Visualizer ─────────────────────────────────────────
@@ -412,6 +403,7 @@ class HostUI {
     // Hide lobby, reveal inference panel
     q('lobby-section').classList.add('hidden');
     q('inference-section').classList.remove('hidden');
+    q('inference-section').appendChild(this._canvas.parentElement);
 
     // Update header status pill
     const pill = q('connection-status-pill');
@@ -476,6 +468,7 @@ class HostUI {
    */
   setGenerating(isGenerating) {
     this._isGenerating = isGenerating;
+    document.getElementById('stop-btn').textContent = '⏹ Stop';
     const q = id => document.getElementById(id);
 
     if (isGenerating) {
@@ -487,6 +480,19 @@ class HostUI {
       q('stop-btn').classList.add('hidden');
       q('prompt-input').disabled = false;
     }
+  }
+
+  pulseHost() {
+    this._pulseNodeIndex = 0;
+    this._drawRing();
+    clearTimeout(this._pulseTimer);
+    this._pulseTimer = setTimeout(() => { this._pulseNodeIndex = -1; this._drawRing(); }, 150);
+  }
+
+  setReady(ready, message) {
+    document.getElementById('generate-btn').disabled = !ready;
+    document.getElementById('ring-status-badge').textContent = message;
+    document.getElementById('connection-status-text').textContent = message;
   }
 
   showError(msg) {

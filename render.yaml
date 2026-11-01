@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: p2p-mobile-mesh
+    runtime: node
+    plan: free
+    buildCommand: node tools/check-deployment.cjs && npm ci --prefix server --omit=dev
+    startCommand: node server/server.js
+    healthCheckPath: /
+    autoDeployTrigger: off
+    envVars:
+      - key: NODE_VERSION
+        value: "24"
+      - key: NODE_ENV
+        value: production

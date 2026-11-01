@@ -8,6 +8,7 @@
 
 'use strict';
 
+const assert = require('node:assert/strict');
 const WebSocket = require('ws');
 const { fork }  = require('child_process');
 const path      = require('path');
@@ -182,6 +183,11 @@ async function runTest() {
       console.log('  N=4:', JSON.stringify(p4), 'Expected: [[0,1],[2,3],[4],[5]]');
       console.log('  N=5:', JSON.stringify(p5), 'Expected: [[0,1],[2],[3],[4],[5]]');
       console.log('  N=6:', JSON.stringify(p6), 'Expected: [[0],[1],[2],[3],[4],[5]]');
+      assert.deepEqual([p2, p3, p4, p5, p6], [
+        [[0,1,2],[3,4,5]], [[0,1],[2,3],[4,5]], [[0,1],[2,3],[4],[5]],
+        [[0,1],[2],[3],[4],[5]], [[0],[1],[2],[3],[4],[5]]
+      ]);
+      for (const invalid of [0, 1, 7, 2.5, NaN]) assert.throws(() => computeDynamicPartition(invalid));
       console.log('✓ All 5 partition configurations verified mathematically!');
     }
 

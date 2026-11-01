@@ -11,7 +11,8 @@
 
 'use strict';
 
-const assert = require('assert');
+import assert from 'node:assert/strict';
+import { HostOrchestrator } from './host-orchestrator.js';
 
 console.log('============================================================');
 console.log('🧪 RUNNING MEMBER 1 PHASE 3 VERIFICATION TEST');
@@ -62,129 +63,6 @@ class MockNodeEngine {
   forwardLayer(x, layerIdx, startPos) {
     // Identity forward pass for mock
     return x;
-  }
-}
-
-// ── HostOrchestrator Class Definition for Test ─────────────────────────────
-const MAX_SEQ_LEN = 512;
-const EOS_TOKEN = 0x00;
-
-class HostOrchestrator {
-  constructor(ringManager, nodeEngine, callbacks = {}) {
-    this._ring       = ringManager;
-    this._engine     = nodeEngine;
-    this._onToken    = callbacks.onToken    || (() => {});
-    this._onComplete = callbacks.onComplete || (() => {});
-    this._onError    = callbacks.onError    || (() => {});
-
-    this._context = [];
-    this._running = false;
-    this._decoder = new TextDecoder('utf-8', { stream: true, fatal: false });
-    this._tokenResolver = null;
-
-    this._ring.onTokenFromSampler((tokenByte) => {
-      if (this._tokenResolver) {
-        const resolve = this._tokenResolver;
-        this._tokenResolver = null;
-        resolve(tokenByte);
-      }
-    });
-
-    this._stats = {
-      tokensGenerated: 0,
-      totalElapsedMs: 0,
-      currentTps: 0,
-      avgStepMs: 0,
-      lastStepMs: 0,
-      lastHostComputeMs: 0,
-      lastRingRttMs: 0
-    };
-  }
-
-  async startGeneration(prompt, maxNewTokens = 5, temperature = 0.0) {
-    this._running = true;
-    this._decoder = new TextDecoder('utf-8', { stream: true, fatal: false });
-
-    const promptBytes = typeof prompt === 'string'
-      ? new TextEncoder().encode(prompt)
-      : prompt;
-
-    this._context = Array.from(promptBytes).slice(0, MAX_SEQ_LEN - maxNewTokens);
-    this._engine.reset();
-
-    this._stats = {
-      tokensGenerated: 0,
-      totalElapsedMs: 0,
-      currentTps: 0,
-      avgStepMs: 0,
-      lastStepMs: 0,
-      lastHostComputeMs: 0,
-      lastRingRttMs: 0,
-      startTime: performance.now()
-    };
-
-    // Prefill
-    const prefillStart = performance.now();
-    let h0 = this._engine.embed(this._context, 0);
-    for (const l of this._ring.assignedLayers) {
-      h0 = this._engine.forwardLayer(h0, l, 0);
-    }
-    this._stats.lastHostComputeMs = performance.now() - prefillStart;
-
-    const rttStart = performance.now();
-    const firstToken = await this._sendAndAwaitToken(h0);
-    this._stats.lastRingRttMs = performance.now() - rttStart;
-
-    this._recordToken(firstToken, performance.now() - prefillStart);
-
-    // Decode loop
-    while (this._running && this._stats.tokensGenerated < maxNewTokens) {
-      const stepStart = performance.now();
-      const lastToken = this._context[this._context.length - 1];
-
-      if (lastToken === EOS_TOKEN && this._stats.tokensGenerated > 1) break;
-
-      const compStart = performance.now();
-      let hStep = this._engine.embed([lastToken], this._context.length - 1);
-      for (const l of this._ring.assignedLayers) {
-        hStep = this._engine.forwardLayer(hStep, l, this._context.length - 1);
-      }
-      this._stats.lastHostComputeMs = performance.now() - compStart;
-
-      const hopStart = performance.now();
-      const nextToken = await this._sendAndAwaitToken(hStep);
-      this._stats.lastRingRttMs = performance.now() - hopStart;
-
-      if (nextToken === null || !this._running) break;
-
-      this._recordToken(nextToken, performance.now() - stepStart);
-    }
-
-    this._running = false;
-    this._onComplete(this._stats);
-    return this._stats;
-  }
-
-  _sendAndAwaitToken(activationTensor) {
-    return new Promise((resolve) => {
-      this._tokenResolver = resolve;
-      this._ring.sendActivation(activationTensor);
-    });
-  }
-
-  _recordToken(tokenByte, stepDurationMs) {
-    this._context.push(tokenByte);
-    this._stats.tokensGenerated++;
-
-    const now = performance.now();
-    const totalElapsedMs = now - this._stats.startTime;
-    this._stats.totalElapsedMs = totalElapsedMs;
-    this._stats.lastStepMs = stepDurationMs;
-    this._stats.avgStepMs = totalElapsedMs / this._stats.tokensGenerated;
-    this._stats.currentTps = (this._stats.tokensGenerated / (totalElapsedMs / 1000));
-
-    const char = this._decoder.decode(new Uint8Array([tokenByte]), { stream: true });
-    this._onToken(tokenByte, char, { ...this._stats });
   }
 }
 

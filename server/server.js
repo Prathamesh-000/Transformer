@@ -81,6 +81,7 @@ const wss = new WebSocket.Server({ server: httpServer, path: '/signal' });
  * @returns {Array<{nodeIndex: number, assignedLayers: number[], isHost: boolean, isSampler: boolean}>}
  */
 function computeDynamicPartition(totalNodes) {
+  if (!Number.isInteger(totalNodes) || totalNodes < 2 || totalNodes > 6) throw new RangeError('Expected 2 to 6 nodes');
   const TOTAL_LAYERS = 6;
   const base = Math.floor(TOTAL_LAYERS / totalNodes);
   const remainder = TOTAL_LAYERS % totalNodes;
@@ -153,6 +154,7 @@ wss.on('connection', (ws, req) => {
       // 1. Host creates a new room lobby
       // ──────────────────────────────────────────────────────────────────────
       case 'create_room': {
+        if (myRoomId) return sendJson(ws, { type: 'error', message: 'Already in a room.' });
         const roomId = (msg.room && msg.room.trim().toUpperCase()) || generateRoomId();
         myPeerId = 'peer_' + Math.random().toString(36).substring(2, 9);
         myRoomId = roomId;
@@ -193,6 +195,7 @@ wss.on('connection', (ws, req) => {
       // 2. Worker phone scans Master QR and joins the room lobby
       // ──────────────────────────────────────────────────────────────────────
       case 'join_room': {
+        if (myRoomId) return sendJson(ws, { type: 'error', message: 'Already in a room.' });
         const roomId = (msg.room || '').trim().toUpperCase();
         if (!roomId || !rooms.has(roomId)) {
           return sendJson(ws, { type: 'error', message: `Room "${roomId}" does not exist.` });
@@ -262,6 +265,7 @@ wss.on('connection', (ws, req) => {
           return sendJson(ws, { type: 'error', message: 'Only the Host can lock the ring topology.' });
         }
 
+        if (room.isLocked) return sendJson(ws, { type: 'error', message: 'Ring is already locked.' });
         const N = room.peers.length;
         if (N < 2) {
           return sendJson(ws, { type: 'error', message: 'At least 2 phones are required to form a mesh.' });

@@ -1,0 +1,12 @@
+{
+  "name": "p2p-mesh-integration",
+  "private": true,
+  "scripts": {
+    "test": "node server/test_phase1.js && node client/network/test_phase2.js && node client/core/test_phase3.js && node --test tests/*.test.mjs",
+    "test:browser": "node tests/browser-integration.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.56.1",
+    "qrcode-generator": "^1.4.4"
+  }
+}

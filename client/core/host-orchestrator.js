@@ -1,334 +1,84 @@
-/**
- * host-orchestrator.js — Pipeline Driver & Autoregressive Loop for Node 0 (Phone 1)
- *
- * Member 1 Deliverable (Phase 3):
- * Coordinates the full distributed generation cycle from the Host phone:
- *
- * 1. Prefill Phase:
- *    - Ingests prompt text -> converts to UTF-8 byte array [b₀, b₁, ... b_{P-1}]
- *    - Runs Node 0's assigned layers (Embedding + Layer 0 or Layers 0-1)
- *    - Caches K, V in Node 0's KV-cache
- *    - Sends activation tensor h₀ [P, 384] downstream via P2P ring
- *    - Awaits first sampled byte token from the final Sampler node
- *
- * 2. Decode Loop (1 token per step):
- *    - Embeds single new token at sequence position startPos
- *    - Runs Node 0's assigned layers (attending over cached K, V)
- *    - Sends h₀ [1, 384] (1,536 bytes) downstream via P2P ring
- *    - Awaits next byte token from Sampler node
- *    - Streams decoded character to UI via TextDecoder({ stream: true })
- *    - Updates real-time telemetry: TPS, Ring RTT, Host compute latency
- *    - Loops until maxTokens or null byte (0x00 EOS)
- */
-
-const MAX_SEQ_LEN = 512;
-const EOS_TOKEN   = 0x00; // Null byte used as end-of-sequence sentinel
-
-class HostOrchestrator {
-  /**
-   * @param {DynamicP2PRingManager} ringManager - Active P2P ring transport manager
-   * @param {object} nodeEngine - Transformer engine for Node 0 (implements embed, forwardLayer, reset)
-   * @param {object} [callbacks] - Event callbacks
-   * @param {function(number, string, object): void} [callbacks.onToken] - (tokenByte, decodedChar, stats)
-   * @param {function(object): void} [callbacks.onComplete] - (finalStats)
-   * @param {function(Error): void} [callbacks.onError] - (error)
-   */
-  constructor(ringManager, nodeEngine, callbacks = {}) {
-    this._ring       = ringManager;
-    this._engine     = nodeEngine;
-    this._onToken    = callbacks.onToken    || (() => {});
-    this._onComplete = callbacks.onComplete || (() => {});
-    this._onError    = callbacks.onError    || (() => {});
-
-    // Autoregressive context buffer
-    this._context = [];
-    this._running = false;
-
-    // Streaming UTF-8 decoder handles multi-byte characters (emojis, unicode) cleanly
-    this._decoder = new TextDecoder('utf-8', { stream: true, fatal: false });
-
-    // Pending token promise resolver
-    this._tokenResolver = null;
-    this._tokenRejector = null;
-
-    // Hook up token listener from Sampler shortcut channel
-    this._ring.onTokenFromSampler((tokenByte) => {
-      if (this._tokenResolver) {
-        const resolve = this._tokenResolver;
-        this._tokenResolver = null;
-        this._tokenRejector = null;
-        resolve(tokenByte);
-      }
+/** Host prefill/decode driver. A single step is in flight; stop drains it safely. */
+export class HostOrchestrator {
+  constructor(ringManager, nodeEngine, callbacks = {}, session = null) {
+    this._ring = ringManager; this._engine = nodeEngine; this._callbacks = callbacks; this._session = session;
+    this._running = false; this._context = []; this._stats = {}; this._pending = null;
+    this._ring.onTokenFromSampler(token => {
+      if (!this._pending) return;
+      const { resolve, reject, timer } = this._pending;
+      clearTimeout(timer); this._pending = null;
+      if (!Number.isInteger(token) || token < 0 || token > 255) reject(new Error('Invalid token received'));
+      else resolve(token);
     });
-
-    // Telemetry stats
-    this._stats = {
-      tokensGenerated: 0,
-      totalElapsedMs: 0,
-      currentTps: 0,
-      avgStepMs: 0,
-      lastStepMs: 0,
-      lastHostComputeMs: 0,
-      lastRingRttMs: 0
-    };
   }
-
-  // ── Public Control API ─────────────────────────────────────────────────────
-
-  /**
-   * Start generating text from a prompt.
-   * @param {string|Uint8Array} prompt - Input prompt text or byte array
-   * @param {number} [maxNewTokens=200] - Maximum tokens to generate
-   * @param {number} [temperature=0.0] - Sampling temperature (0.0 = greedy argmax)
-   * @returns {Promise<object>} Resolves with final generation statistics
-   */
-  async startGeneration(prompt, maxNewTokens = 200, temperature = 0.0) {
-    if (this._running) {
-      console.warn('[HostOrchestrator] Generation already in progress.');
-      return this._stats;
-    }
-
-    if (!this._ring.isRingSealed) {
-      const err = new Error('Cannot start generation: P2P Ring is not fully sealed.');
-      this._onError(err);
-      throw err;
-    }
-
-    this._running = true;
-    this._decoder = new TextDecoder('utf-8', { stream: true, fatal: false });
-
-    // Convert prompt to byte array
-    let promptBytes;
-    if (typeof prompt === 'string') {
-      promptBytes = prompt.length > 0
-        ? new TextEncoder().encode(prompt)
-        : new Uint8Array([EOS_TOKEN]); // Empty prompt -> feed null byte
-    } else if (prompt instanceof Uint8Array) {
-      promptBytes = prompt;
-    } else {
-      promptBytes = new Uint8Array([EOS_TOKEN]);
-    }
-
-    // Truncate to maximum context length
-    this._context = Array.from(promptBytes).slice(0, MAX_SEQ_LEN - maxNewTokens);
-    const promptLen = this._context.length;
-
-    // Reset transformer engine & KV-cache on Node 0
-    if (typeof this._engine.reset === 'function') {
-      this._engine.reset();
-    }
-
-    // Reset stats
-    this._stats = {
-      tokensGenerated: 0,
-      totalElapsedMs: 0,
-      currentTps: 0,
-      avgStepMs: 0,
-      lastStepMs: 0,
-      lastHostComputeMs: 0,
-      lastRingRttMs: 0,
-      startTime: performance.now()
-    };
-
-    console.log(`[HostOrchestrator] Starting generation. Prompt length: ${promptLen} bytes, Max new tokens: ${maxNewTokens}`);
-
+  async startGeneration(prompt, maxNewTokens = 200, temperature = 0) {
+    if (this._running) throw new Error('Generation already in progress');
+    if (!this._ring.isRingSealed) throw new Error('Ring is not ready');
+    if (!Number.isInteger(maxNewTokens) || maxNewTokens < 1 || maxNewTokens > 512) throw new RangeError('maxNewTokens must be 1..512');
+    if (!Number.isFinite(temperature) || temperature < 0) throw new RangeError('Invalid temperature');
+    const bytes = typeof prompt === 'string' ? new TextEncoder().encode(prompt) : prompt;
+    if (!(bytes instanceof Uint8Array) || !bytes.length) throw new Error('Enter a nonempty UTF-8 prompt');
+    // Last sampled byte need not be embedded, so P + generated - 1 must fit.
+    if (bytes.length + maxNewTokens - 1 > 512) throw new RangeError('Prompt bytes + max tokens - 1 must fit the 512-position context');
+    this._running = true; this._stopRequested = false; this._failure = null;
+    this._context = Array.from(bytes); this._decoder = new TextDecoder('utf-8');
+    this._stats = { tokensGenerated: 0, totalElapsedMs: 0, currentTps: 0, avgStepMs: 0, lastStepMs: 0, lastHostComputeMs: 0, lastRingRttMs: 0 };
     try {
-      // ──────────────────────────────────────────────────────────────────────
-      // 1. PREFILL PHASE: Process full prompt through Node 0's assigned layers
-      // ──────────────────────────────────────────────────────────────────────
-      const prefillStart = performance.now();
-
-      // Embed all prompt tokens at startPos = 0
-      let h0;
-      if (typeof this._engine.embed === 'function') {
-        h0 = this._engine.embed(this._context, /* startPos= */ 0);
-        // Forward through each assigned layer on Node 0
-        const assignedLayers = this._ring.assignedLayers || [0];
-        for (const layerIdx of assignedLayers) {
-          h0 = this._engine.forwardLayer(h0, layerIdx, /* startPos= */ 0);
-        }
-      } else if (typeof this._engine.forward === 'function') {
-        // Fallback unified forward interface
-        h0 = this._engine.forward(this._context, /* startPos= */ 0);
-      } else {
-        throw new Error('Node engine does not implement embed/forward.');
-      }
-
-      const hostPrefillComputeMs = performance.now() - prefillStart;
-      this._stats.lastHostComputeMs = hostPrefillComputeMs;
-
-      console.log(`[HostOrchestrator] Prefill computed in ${hostPrefillComputeMs.toFixed(1)}ms. Transmitting h₀ [${promptLen}, 384] downstream...`);
-
-      // Transmit prefill activation matrix downstream and await token 1 from Sampler
-      const rttStart = performance.now();
-      const firstToken = await this._sendAndAwaitToken(h0);
-      this._stats.lastRingRttMs = performance.now() - rttStart;
-
-      if (firstToken === null || !this._running) {
-        return this._finish();
-      }
-
-      this._recordToken(firstToken, performance.now() - prefillStart);
-
-      // ──────────────────────────────────────────────────────────────────────
-      // 2. DECODE LOOP: Generate 1 token per step autoregressively
-      // ──────────────────────────────────────────────────────────────────────
-      while (this._running && this._stats.tokensGenerated < maxNewTokens) {
-        // Check context window boundary
-        if (this._context.length >= MAX_SEQ_LEN) {
-          console.log('[HostOrchestrator] Context window limit (512 tokens) reached.');
-          break;
-        }
-
-        const stepStart = performance.now();
-        const startPos = this._context.length - 1;
-        const lastToken = this._context[this._context.length - 1];
-
-        // Check EOS null byte sentinel
-        if (lastToken === EOS_TOKEN && this._stats.tokensGenerated > 1) {
-          console.log('[HostOrchestrator] End-of-sequence token (0x00) generated. Stopping.');
-          break;
-        }
-
-        // Compute Node 0 forward for single new token
-        const computeStart = performance.now();
-        let hStep;
-
-        if (typeof this._engine.embed === 'function') {
-          hStep = this._engine.embed([lastToken], startPos);
-          const assignedLayers = this._ring.assignedLayers || [0];
-          for (const layerIdx of assignedLayers) {
-            hStep = this._engine.forwardLayer(hStep, layerIdx, startPos);
-          }
+      if (this._session) await this._session.prepare(temperature);
+      else this._engine.reset();
+      this._stats.startTime = performance.now();
+      let input = bytes, position = 0;
+      while (!this._stopRequested && this._stats.tokensGenerated < maxNewTokens) {
+        if (this._failure) throw this._failure;
+        const start = performance.now();
+        let activation;
+        if (this._engine.processStep) {
+          const result = await this._engine.processStep(input, position, temperature);
+          if (result.type !== 'activation') throw new Error('Host must produce an activation');
+          activation = result.activation;
         } else {
-          hStep = this._engine.forward([lastToken], startPos);
+          activation = this._engine.embed(input, position);
+          for (const layer of this._ring.assignedLayers) activation = this._engine.forwardLayer(activation, layer, position);
         }
-
-        const hostStepComputeMs = performance.now() - computeStart;
-        this._stats.lastHostComputeMs = hostStepComputeMs;
-
-        // Transmit strictly 1,536 bytes (Float32Array[1, 384]) downstream
-        const hopStart = performance.now();
-        const nextToken = await this._sendAndAwaitToken(hStep);
-        this._stats.lastRingRttMs = performance.now() - hopStart;
-
-        if (nextToken === null || !this._running) {
-          break;
-        }
-
-        const stepTotalMs = performance.now() - stepStart;
-        this._recordToken(nextToken, stepTotalMs);
+        this._stats.lastHostComputeMs = performance.now() - start;
+        const transitStart = performance.now();
+        const token = await this._sendAndAwaitToken(activation);
+        this._stats.lastRingRttMs = performance.now() - transitStart; // Includes remote compute, not pure network RTT.
+        position += input.length;
+        this._context.push(token); this._stats.tokensGenerated++;
+        this._stats.totalElapsedMs = performance.now() - this._stats.startTime;
+        this._stats.lastStepMs = performance.now() - start;
+        this._stats.avgStepMs = this._stats.totalElapsedMs / this._stats.tokensGenerated;
+        this._stats.currentTps = this._stats.tokensGenerated * 1000 / Math.max(this._stats.totalElapsedMs, 0.001);
+        this._session?.mirror(token);
+        this._callbacks.onToken?.(token, this._decoder.decode(Uint8Array.of(token), { stream: true }), this.stats);
+        input = Uint8Array.of(token);
+        // All 256 values are byte tokens; the plan does not reserve NUL as EOS.
       }
-    } catch (err) {
-      console.error('[HostOrchestrator] Error during generation loop:', err);
-      this._onError(err);
-      throw err;
-    } finally {
-      return this._finish();
-    }
+      if (this._failure) throw this._failure;
+      if (this._session) await this._session.finish();
+      const tail = this._decoder.decode();
+      if (tail) this._callbacks.onText?.(tail); // Flush text without inventing a token byte.
+      this._callbacks.onComplete?.(this.stats);
+      return this.stats;
+    } catch (error) {
+      this._session?.fail(error); this._callbacks.onError?.(error); throw error;
+    } finally { this._running = false; }
   }
-
-  /**
-   * Stop generation loop immediately.
-   */
-  stop() {
-    if (!this._running) return;
-    console.log('[HostOrchestrator] Generation stopped by user.');
-    this._running = false;
-
-    if (this._tokenRejector) {
-      const reject = this._tokenRejector;
-      this._tokenResolver = null;
-      this._tokenRejector = null;
-      reject(new Error('Generation stopped by user'));
-    }
-  }
-
-  // ── Internal Helpers ───────────────────────────────────────────────────────
-
-  /**
-   * Sends activation tensor downstream and returns a Promise that resolves
-   * when the sampled token byte arrives from the Sampler node.
-   * @param {Float32Array} activationTensor
-   * @returns {Promise<number|null>}
-   */
-  _sendAndAwaitToken(activationTensor) {
+  _sendAndAwaitToken(activation) {
     return new Promise((resolve, reject) => {
-      if (!this._running) return resolve(null);
-
-      // Backpressure safety timeout (10 seconds per hop)
-      const timeout = setTimeout(() => {
-        this._tokenResolver = null;
-        this._tokenRejector = null;
-        reject(new Error('DataChannel step timeout: Token not received within 10s.'));
-      }, 10000);
-
-      this._tokenResolver = (tokenByte) => {
-        clearTimeout(timeout);
-        resolve(tokenByte);
-      };
-
-      this._tokenRejector = (err) => {
-        clearTimeout(timeout);
-        resolve(null);
-      };
-
-      // Send 0x01 activation packet downstream
-      try {
-        this._ring.sendActivation(activationTensor);
-      } catch (e) {
-        clearTimeout(timeout);
-        reject(e);
-      }
+      const timer = setTimeout(() => { this._pending = null; reject(new Error('Inference step timed out (120s)')); }, 120000);
+      this._pending = { resolve, reject, timer };
+      try { this._ring.sendActivation(activation); }
+      catch (error) { clearTimeout(timer); this._pending = null; reject(error); }
     });
   }
-
-  /**
-   * Append token byte to context, update stats, and notify caller.
-   */
-  _recordToken(tokenByte, stepDurationMs) {
-    this._context.push(tokenByte);
-    this._stats.tokensGenerated++;
-
-    const now = performance.now();
-    const totalElapsedMs = now - this._stats.startTime;
-    this._stats.totalElapsedMs = totalElapsedMs;
-    this._stats.lastStepMs = stepDurationMs;
-    this._stats.avgStepMs = totalElapsedMs / this._stats.tokensGenerated;
-    this._stats.currentTps = (this._stats.tokensGenerated / (totalElapsedMs / 1000));
-
-    // Decode byte chunk streamingly
-    const char = this._decoder.decode(new Uint8Array([tokenByte]), { stream: true });
-
-    // Notify UI
-    this._onToken(tokenByte, char, { ...this._stats });
+  stop() { this._stopRequested = true; }
+  abort(error) {
+    this._failure = error;
+    if (this._pending) { clearTimeout(this._pending.timer); this._pending.reject(error); this._pending = null; }
   }
-
-  _finish() {
-    this._running = false;
-    // Flush any remaining buffered characters in decoder
-    const remaining = this._decoder.decode();
-    if (remaining) {
-      this._onToken(0, remaining, { ...this._stats });
-    }
-
-    console.log(`[HostOrchestrator] Generation finished. Total tokens: ${this._stats.tokensGenerated}, Avg TPS: ${this._stats.currentTps.toFixed(1)}`);
-    this._onComplete({ ...this._stats });
-    return this._stats;
-  }
-
-  get isRunning() {
-    return this._running;
-  }
-
-  get stats() {
-    return { ...this._stats };
-  }
-
-  get context() {
-    return [...this._context];
-  }
+  get isRunning() { return this._running; }
+  get stats() { return { ...this._stats }; }
+  get context() { return [...this._context]; }
 }
-
-export { HostOrchestrator };
-

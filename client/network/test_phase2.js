@@ -9,7 +9,7 @@
 
 'use strict';
 
-const assert = require('assert');
+import assert from 'node:assert/strict';
 
 console.log('============================================================');
 console.log('🧪 RUNNING MEMBER 1 PHASE 2 VERIFICATION TEST');
