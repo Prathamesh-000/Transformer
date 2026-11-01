@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no" />
+  <meta name="theme-color" content="#121214" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>P2P Mobile Mesh Inference</title>
+
+  <!-- Preconnect to CDNs -->
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" />
+
+  <!-- Global Responsive Dark Stylesheet -->
+  <link rel="stylesheet" href="style.css" />
+
+  <!-- Embedded QR Code Generator for offline/local resilience -->
+  <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
+</head>
+<body>
+
+  <!-- Root Mounting Container -->
+  <main id="app-root">
+
+    <!-- Default Landing View: Role Selector -->
+    <div id="landing-view" class="landing-container">
+      <div class="landing-box">
+        <h1>📱 P2P Mobile Mesh</h1>
+        <p class="section-desc">
+          Distributed text generation across up to 6 mobile phones over local WebRTC.
+        </p>
+
+        <div class="role-buttons-grid">
+          <a href="?role=host" class="btn-role">
+            <span>👑</span>
+            <span>Phone 1: Create Mesh Host</span>
+          </a>
+
+          <div style="margin: 12px 0 6px 0; font-size: 0.8rem; color: #888;">— OR JOIN AS WORKER —</div>
+
+          <div style="display: flex; gap: 8px;">
+            <input
+              type="text"
+              id="manual-room-input"
+              placeholder="Enter Room Code (e.g. RING42)"
+              maxlength="6"
+              style="flex: 1; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; color: #fff; padding: 12px; font-family: var(--font-mono); font-size: 1rem; text-transform: uppercase;"
+            />
+            <button id="join-room-btn" class="btn btn-primary" style="width: auto; padding: 0 20px;">
+              Join
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Host View Container -->
+    <div id="host-view" class="hidden"></div>
+
+    <!-- Worker View Container -->
+    <div id="worker-view" class="hidden">
+      <div class="worker-app">
+        <header class="app-header">
+          <div class="header-title">
+            <span class="badge-role" id="worker-role-badge">📱 Worker Phone</span>
+            <h2 id="worker-device-title">Pipeline Stage</h2>
+          </div>
+          <div id="worker-status-pill" class="status-pill status-connecting">
+            <span class="status-indicator-dot"></span>
+            <span id="worker-status-text">Connecting...</span>
+          </div>
+        </header>
+
+        <section class="mesh-card">
+          <div class="card-header">
+            <h3>Mesh Status</h3>
+            <span class="badge-accent" id="worker-room-badge">Room: ------</span>
+          </div>
+          <p class="section-desc" id="worker-desc">
+            Connected to signaling lobby. Waiting for Phone 1 (Host) to seal the ring...
+          </p>
+
+          <div id="worker-assigned-layers-box" class="qr-container hidden" style="flex-direction: column; text-align: center;">
+            <span class="room-label">ASSIGNED COMPUTATION</span>
+            <span id="worker-layer-info" class="room-code" style="font-size: 1.15rem;">Loading...</span>
+            <span id="worker-neighbor-info" style="font-size: 0.8rem; color: var(--text-sub);">Downstream: ------</span>
+          </div>
+
+          <div class="output-wrapper">
+            <div class="output-header">
+              <span class="output-title">Live Token Stream Mirror</span>
+            </div>
+            <div id="worker-stream" class="output-stream" style="min-height: 140px;">
+              <span class="output-placeholder">Streamed characters will mirror here during inference...</span>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- Application Bootstrap Module -->
+  <script type="module">
+    import { SignalingClient } from './network/signaling.js';
+    import { DynamicP2PRingManager } from './network/p2p-ring.js';
+    import { HostUI } from './ui/host-ui.js';
+    import { HostOrchestrator } from './core/host-orchestrator.js';
+
+    // ── Screen WakeLock Integration (Prevents mobile sleep during benchmark) ──
+    async function requestWakeLock() {
+      if ('wakeLock' in navigator) {
+        try {
+          await navigator.wakeLock.request('screen');
+          console.log('[App] Screen WakeLock acquired ✓');
+        } catch (e) {
+          console.warn('[App] WakeLock error:', e.message);
+        }
+      }
+    }
+    window.addEventListener('click', requestWakeLock, { once: true });
+    window.addEventListener('touchstart', requestWakeLock, { once: true });
+
+    // ── URL Query Parameters ──────────────────────────────────────────────────
+    const urlParams = new URLSearchParams(window.location.search);
+    const roleParam = urlParams.get('role');
+    const roomParam = urlParams.get('room');
+
+    const landingView = document.getElementById('landing-view');
+    const hostView    = document.getElementById('host-view');
+    const workerView  = document.getElementById('worker-view');
+
+    // Wire manual room join input
+    document.getElementById('join-room-btn').addEventListener('click', () => {
+      const room = document.getElementById('manual-room-input').value.trim().toUpperCase();
+      if (room) {
+        window.location.href = `?room=${room}`;
+      }
+    });
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // MODE 1: HOST (Phone 1)
+    // ──────────────────────────────────────────────────────────────────────────
+    if (roleParam === 'host') {
+      landingView.classList.add('hidden');
+      hostView.classList.remove('hidden');
+
+      const hostUi = new HostUI();
+      hostUi.init(hostView);
+
+      const sig = new SignalingClient();
+      let ringManager = null;
+      let orchestrator = null;
+
+      try {
+        await sig.connect();
+        const roomData = await sig.createRoom();
+        console.log('[App:Host] Room created:', roomData.room);
+
+        // Render Master QR code
+        hostUi.renderMasterQR(roomData.room);
+        hostUi.updateLobbyPeers(roomData.peers);
+
+        // Peer joined event
+        sig.on('peer_joined', (msg) => {
+          console.log('[App:Host] New peer joined lobby:', msg.newPeer.deviceName);
+          hostUi.updateLobbyPeers(msg.peers);
+        });
+
+        // Peer left event
+        sig.on('peer_left', (msg) => {
+          console.log('[App:Host] Peer left lobby. Remaining:', msg.remainingNodes);
+        });
+
+        // Lock Ring button clicked by user
+        hostUi.onLockRing(() => {
+          console.log('[App:Host] Locking ring topology...');
+          sig.lockRing();
+        });
+
+        // Ring configuration received from server
+        sig.on('ring_config', async (config) => {
+          console.log('[App:Host] Ring configuration received:', config);
+          hostUi.showInferencePanel(config);
+
+          ringManager = new DynamicP2PRingManager(sig, config);
+
+          // Mock Node 0 Engine fallback until Member 2 integrates transformer engine
+          const mockNodeEngine = {
+            reset: () => console.log('[MockEngine] Reset KV-cache'),
+            embed: (tokens, startPos) => new Float32Array(tokens.length * 384),
+            forwardLayer: (x, layerIdx, startPos) => x
+          };
+
+          orchestrator = new HostOrchestrator(ringManager, mockNodeEngine, {
+            onToken: (tok, char, stats) => {
+              hostUi.appendTokenChar(char);
+              hostUi.updateTelemetry(stats);
+            },
+            onComplete: (stats) => {
+              hostUi.setGenerating(false);
+              hostUi.updateTelemetry(stats);
+            },
+            onError: (err) => {
+              hostUi.setGenerating(false);
+              hostUi.showError(err.message);
+            }
+          });
+
+          // Establish circular WebRTC links
+          try {
+            await ringManager.initiateConnections();
+            console.log('[App:Host] All P2P Ring connections sealed ✓');
+          } catch (e) {
+            hostUi.showError('P2P connection error: ' + e.message);
+          }
+        });
+
+        // Wire Generate button
+        hostUi.onGenerate(async ({ prompt, maxTokens, temperature }) => {
+          if (!orchestrator) return;
+          hostUi.setGenerating(true);
+          try {
+            await orchestrator.startGeneration(prompt, maxTokens, temperature);
+          } catch (err) {
+            hostUi.setGenerating(false);
+          }
+        });
+
+        // Wire Stop button
+        hostUi.onStop(() => {
+          if (orchestrator) orchestrator.stop();
+          hostUi.setGenerating(false);
+        });
+
+      } catch (err) {
+        console.error('[App:Host] Initialization error:', err);
+        hostUi.showError('Signaling error: ' + err.message);
+      }
+    }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // MODE 2: WORKER (Phones 2 to 6 scanned from Master QR)
+    // ──────────────────────────────────────────────────────────────────────────
+    else if (roomParam || roleParam === 'worker') {
+      landingView.classList.add('hidden');
+      workerView.classList.remove('hidden');
+
+      const roomId = (roomParam || '').trim().toUpperCase();
+      document.getElementById('worker-room-badge').textContent = `Room: ${roomId}`;
+
+      const sig = new SignalingClient();
+      let ringManager = null;
+
+      try {
+        await sig.connect();
+        const joinData = await sig.joinRoom(roomId);
+        console.log('[App:Worker] Joined room:', joinData.room);
+
+        const statusPill = document.getElementById('worker-status-pill');
+        statusPill.className = 'status-pill status-connected';
+        document.getElementById('worker-status-text').textContent = 'In Lobby ✓';
+
+        // Wait for Host to seal ring and distribute ring_config
+        sig.on('ring_config', async (config) => {
+          console.log('[App:Worker] Ring configuration received:', config);
+
+          document.getElementById('worker-role-badge').textContent = `Node ${config.nodeIndex} of ${config.totalNodes}`;
+          document.getElementById('worker-device-title').textContent = config.isSampler ? 'Sampler Node' : `Pipeline Worker`;
+          document.getElementById('worker-desc').textContent = `Ring sealed with ${config.totalNodes} phones active.`;
+
+          const assignedBox = document.getElementById('worker-assigned-layers-box');
+          assignedBox.classList.remove('hidden');
+          document.getElementById('worker-layer-info').textContent = `Layers [${config.assignedLayers.join(', ')}]`;
+          document.getElementById('worker-neighbor-info').textContent = `Downstream: ${config.downstreamDeviceName}`;
+
+          ringManager = new DynamicP2PRingManager(sig, config);
+
+          // Handle incoming activations & token returns
+          ringManager.onActivation((tensor) => {
+            console.log(`[Worker] Received activation shape [${tensor.length / 384}, 384]. Passing downstream...`);
+            // Forward downstream in ring
+            ringManager.sendActivation(tensor);
+          });
+
+          await ringManager.initiateConnections();
+          console.log('[App:Worker] P2P Ring connections sealed ✓');
+        });
+
+      } catch (err) {
+        console.error('[App:Worker] Error:', err);
+        document.getElementById('worker-status-text').textContent = 'Error';
+      }
+    }
+  </script>
+</body>
+</html>
+
