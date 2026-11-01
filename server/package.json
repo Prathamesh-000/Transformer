@@ -1,0 +1,13 @@
+{
+  "name": "p2p-mesh-transformer-server",
+  "version": "1.0.0",
+  "description": "Dynamic N-Phone Signaling Relay and Static Server for P2P Mobile Mesh Inference",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "ws": "^8.17.0"
+  }
+}
