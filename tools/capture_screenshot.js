@@ -199,3 +199,4 @@ main().catch(err => {
   console.error('❌ Screenshot capture error:', err);
   process.exit(1);
 });
+

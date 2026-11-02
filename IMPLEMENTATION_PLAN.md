@@ -268,7 +268,7 @@ The division of labor remains clean, structured, and modular:
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
-│               MEMBER 1: NETWORK, ORCHESTRATION & HOST UI               │
+│         PRATHAMESH PATIL (MEMBER 1): NETWORK, ORCHESTRATION & HOST UI  │
 ├────────────────────────────────┬───────────────────────────────────────┤
 │ Responsibilities:              │ Deliverables:                         │
 │ • Dynamic WebSocket Lobby      │ 1. server/server.js                   │
@@ -280,7 +280,7 @@ The division of labor remains clean, structured, and modular:
 └────────────────────────────────┴───────────────────────────────────────┘
 
 ┌────────────────────────────────────────────────────────────────────────┐
-│             MEMBER 2: ML, INFERENCE ENGINE & PIPELINE WORKER           │
+│       VIKRANT SAINI (MEMBER 2): ML, INFERENCE ENGINE & PIPELINE WORKER │
 ├────────────────────────────────┬───────────────────────────────────────┤
 │ Responsibilities:              │ Deliverables:                         │
 │ • PyTorch Seed-42 Weight Gen   │ 1. tools/generate_weights.py          │
@@ -294,10 +294,10 @@ The division of labor remains clean, structured, and modular:
 
 ---
 
-## 8. Exact Interface Contracts Between Member 1 & Member 2
+## 8. Exact Interface Contracts Between Prathamesh Patil (Member 1) & Vikrant Saini (Member 2)
 
 ### Interface 1: Dynamic Ring Configuration (`client/network/p2p-ring.js`)
-*Produced by Member 1 $\to$ Delivered to Member 2's `node-worker.js`*
+*Produced by Prathamesh Patil (Member 1) $\to$ Delivered to Vikrant Saini (Member 2)'s `node-worker.js`*
 ```typescript
 interface DynamicRingConfig {
   nodeIndex: number;         // 0 to N-1
@@ -326,7 +326,7 @@ class DynamicP2PRingManager {
 ```
 
 ### Interface 2: Dynamic Sliced Weight Loader (`client/core/weights.js`)
-*Produced by Member 2 $\to$ Consumed by `node-worker.js`*
+*Produced by Vikrant Saini (Member 2) $\to$ Consumed by `node-worker.js`*
 ```typescript
 interface SingleLayerWeights {
   ln1w: Float32Array;  // [384]
@@ -362,7 +362,7 @@ function loadDynamicNodeWeights(
 ```
 
 ### Interface 3: Pure CPU Transformer Engine (`client/core/transformer.js`)
-*Produced by Member 2 $\to$ Consumed by `node-worker.js`*
+*Produced by Vikrant Saini (Member 2) $\to$ Consumed by `node-worker.js`*
 ```typescript
 class TransformerDynamicBlock {
   constructor(weights: DynamicNodeWeights, assignedLayers: number[]);
@@ -390,23 +390,23 @@ class TransformerDynamicBlock {
 
 ```
 PHASE 1: Foundation, Weight Generation & Dynamic Lobby
-  ├─ Member 2: Generate seed-42 weights.bin & verify parameter layout
-  └─ Member 1: Build Node.js WebSocket signaling server with dynamic room lobby
+  ├─ Vikrant Saini (Member 2): Generate seed-42 weights.bin & verify parameter layout
+  └─ Prathamesh Patil (Member 1): Build Node.js WebSocket signaling server with dynamic room lobby
 
 PHASE 2: Ring P2P Transport & Pure CPU Math Engine
-  ├─ Member 2: Build weights.js (dynamic slicing) & transformer.js (tiled matmul)
-  └─ Member 1: Build p2p-ring.js (arbitrary N-peer circular WebRTC setup)
+  ├─ Vikrant Saini (Member 2): Build weights.js (dynamic slicing) & transformer.js (tiled matmul)
+  └─ Prathamesh Patil (Member 1): Build p2p-ring.js (arbitrary N-peer circular WebRTC setup)
 
 PHASE 3: Universal Pipeline Worker & Host Orchestrator
-  ├─ Member 2: Build node-worker.js (processes arbitrary assignedLayers array)
-  └─ Member 1: Build host-orchestrator.js (prompt prefill & token decode loop)
+  ├─ Vikrant Saini (Member 2): Build node-worker.js (processes arbitrary assignedLayers array)
+  └─ Prathamesh Patil (Member 1): Build host-orchestrator.js (prompt prefill & token decode loop)
 
 PHASE 4: Master QR UI & Dynamic Animated Ring Visualizer
-  ├─ Member 2: Build worker-ui.js (dynamic layer badge, live token mirror)
-  └─ Member 1: Build host-ui.js (Master QR generator, dynamic ring canvas)
+  ├─ Vikrant Saini (Member 2): Build worker-ui.js (dynamic layer badge, live token mirror)
+  └─ Prathamesh Patil (Member 1): Build host-ui.js (Master QR generator, dynamic ring canvas)
 
 PHASE 5: Multi-Device Benchmarking & Validation Routine
-  └─ Both: Test across 2, 3, 4, 5, and 6 phones, verify deterministic outputs
+  └─ Joint (Prathamesh Patil & Vikrant Saini): Test across 2, 3, 4, 5, and 6 phones, verify deterministic outputs
 ```
 
 ---

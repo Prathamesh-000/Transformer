@@ -1,7 +1,7 @@
 /**
  * host-ui.js — Host Dashboard, Dynamic Ring Visualizer & Master QR Display
  *
- * Member 1 Deliverable (Phase 4):
+ * Prathamesh Patil (Member 1) Deliverable (Phase 4):
  * Manages the Phone 1 (Host) interface:
  *  1. Displays the Single Master QR Code for quick phone pairing
  *  2. Renders an interactive Canvas Ring Visualizer showing connected phones (N = 2 to 6)

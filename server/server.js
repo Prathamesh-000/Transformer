@@ -1,7 +1,7 @@
 /**
  * server.js — Dynamic N-Phone Mesh Signaling Server & Static Host
  *
- * Responsibilities for Member 1 (Phase 1):
+ * Responsibilities for Prathamesh Patil (Member 1) (Phase 1):
  *  1. Serve client/ static assets to mobile browsers
  *  2. Serve weights.bin with proper binary MIME & range-caching headers
  *  3. WebSocket signaling endpoint at /signal:
@@ -32,7 +32,7 @@ const app = express();
 app.get('/weights.bin', (req, res) => {
   fs.stat(WEIGHTS_PATH, (err, stat) => {
     if (err) {
-      console.warn('[Server] weights.bin not found on disk yet (Member 2 deliverable).');
+      console.warn('[Server] weights.bin not found on disk yet (Vikrant Saini deliverable).');
       return res.status(404).send('weights.bin not found on server.');
     }
     res.setHeader('Content-Type', 'application/octet-stream');
@@ -63,7 +63,7 @@ app.get('*', (req, res) => {
         <h2>🌐 P2P Mobile Mesh Signaling Server is Active</h2>
         <p>Listening on port: <strong>${PORT}</strong></p>
         <p>WebSocket Signaling Endpoint: <code>ws://${req.headers.host}/signal</code></p>
-        <p>Status: Member 1 Phase 1 Signaling Layer Ready ✅</p>
+        <p>Status: Prathamesh Patil (Member 1) Phase 1 Signaling Layer Ready ✅</p>
       </body>
       </html>
     `);
@@ -411,7 +411,7 @@ if (require.main === module) {
   Port:                 ${PORT}
   HTTP endpoint:        http://localhost:${PORT}
   WebSocket signaling:  ws://localhost:${PORT}/signal
-  Weights status:       ${fs.existsSync(WEIGHTS_PATH) ? 'Found (44.16 MB) ✓' : 'Not generated yet (Pending Member 2)'}
+  Weights status:       ${fs.existsSync(WEIGHTS_PATH) ? 'Found (44.16 MB) ✓' : 'Not generated yet (Pending Vikrant Saini)'}
   Supported Nodes:      Dynamic (2 to 6 phones)
 ============================================================
   Ready for Phase 1 testing!

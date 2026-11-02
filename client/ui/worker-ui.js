@@ -1,6 +1,6 @@
 import { validateRingConfig } from '../core/node-worker.js';
 
-/** Mount into Member 1's page. Networking invokes these explicit lifecycle hooks. */
+/** Mount into Prathamesh Patil's (Member 1) page. Networking invokes these explicit lifecycle hooks. */
 export class WorkerUI {
   constructor(root, config) {
     validateRingConfig(config);

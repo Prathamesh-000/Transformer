@@ -1,7 +1,7 @@
 /**
  * signaling.js — Dynamic Multi-Peer WebSocket Signaling Client
  *
- * Member 1 Deliverable (Phase 2):
+ * Prathamesh Patil (Member 1) Deliverable (Phase 2):
  * Manages the WebSocket connection to the signaling server for any phone role.
  * Works uniformly on mobile Safari and Android Chrome.
  *

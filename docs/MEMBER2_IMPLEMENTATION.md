@@ -1,8 +1,8 @@
-# Member 2: implementation walkthrough and handoff
+# Vikrant Saini (Member 2): Implementation Walkthrough and Handoff
 
-**Integration update:** Member 1 and Member 2 are now connected by `client/app.js` and `client/core/pipeline-session.js`. The handoff discussion below describes the original module boundaries; those hooks are now wired. See [integration verification](INTEGRATION_VERIFICATION.md) for current behavior and tests.
+**Integration update:** Prathamesh Patil (Member 1) and Vikrant Saini (Member 2) are now connected by `client/app.js` and `client/core/pipeline-session.js`. The handoff discussion below describes the original module boundaries; those hooks are now wired. See [integration verification](INTEGRATION_VERIFICATION.md) for current behavior and tests.
 
-This work implements Member 2's responsibilities in `IMPLEMENTATION_PLAN.md` in three phases. The original Member 2 phase left Member 1's server and networking files unchanged; the later integration fixes are documented separately. Browser files are native ES modules; `client/package.json` also lets Node import them for tests.
+This work implements Vikrant Saini's (Member 2) responsibilities in `IMPLEMENTATION_PLAN.md` in three phases. The original Member 2 phase left Prathamesh Patil's (Member 1) server and networking files unchanged; the later integration fixes are documented separately. Browser files are native ES modules; `client/package.json` also lets Node import them for tests.
 
 ## Phase 1 — A reproducible model
 

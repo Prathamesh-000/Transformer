@@ -142,10 +142,10 @@ $$\text{base} = \lfloor 6 / N \rfloor, \quad \text{remainder} = 6 \pmod N$$
 
 ## 👥 2-Member Team Division
 
-| Role | Member | Responsibilities & Files Owned |
+| Role | Engineer | Responsibilities & Files Owned |
 |---|---|---|
-| **Network, Orchestration & Host UI** | **Member 1** | • Multi-peer WebSocket lobby server (`server/server.js`)<br>• Circular WebRTC DataChannel manager (`client/network/p2p-ring.js`)<br>• Host autoregressive loop & prefill driver (`client/core/host-orchestrator.js`)<br>• Master QR generator, Canvas ring visualizer & HUD (`client/ui/host-ui.js`)<br>• Entry point & responsive dark theme (`client/index.html`, `client/style.css`) |
-| **ML Engine, Weights & Universal Worker** | **Member 2** | • PyTorch seed-42 weights export (`tools/generate_weights.py`)<br>• Dynamic layer weight loader & slicer (`client/core/weights.js`)<br>• Pure CPU math engine with 32×32 tiled `matmul` (`client/core/transformer.js`)<br>• Universal pipeline stage worker class (`client/core/node-worker.js`)<br>• Worker status badge & live mirror UI (`client/ui/worker-ui.js`) |
+| **Network, Orchestration & Host UI** | **Prathamesh Patil** (Member 1) | • Multi-peer WebSocket lobby server (`server/server.js`)<br>• Circular WebRTC DataChannel manager (`client/network/p2p-ring.js`)<br>• Host autoregressive loop & prefill driver (`client/core/host-orchestrator.js`)<br>• Master QR generator, Canvas ring visualizer & HUD (`client/ui/host-ui.js`)<br>• Entry point & responsive dark theme (`client/index.html`, `client/style.css`) |
+| **ML Engine, Weights & Universal Worker** | **Vikrant Saini** (Member 2) | • PyTorch seed-42 weights export (`tools/generate_weights.py`)<br>• Dynamic layer weight loader & slicer (`client/core/weights.js`)<br>• Pure CPU math engine with 32×32 tiled `matmul` (`client/core/transformer.js`)<br>• Universal pipeline stage worker class (`client/core/node-worker.js`)<br>• Worker status badge & live mirror UI (`client/ui/worker-ui.js`) |
 
 ---
 

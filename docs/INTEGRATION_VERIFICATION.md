@@ -1,4 +1,4 @@
-# Member 1 + Member 2 integration
+# Prathamesh Patil (Member 1) + Vikrant Saini (Member 2) Integration
 
 ## Phase 1: connect the planned contracts
 
