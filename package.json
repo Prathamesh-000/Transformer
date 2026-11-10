@@ -1,6 +1,7 @@
 {
   "name": "p2p-mesh-integration",
   "private": true,
+  "homepage": "https://p2p-mobile-mesh.onrender.com",
   "scripts": {
     "test": "node server/test_phase1.js && node client/network/test_phase2.js && node client/core/test_phase3.js && node --test tests/*.test.mjs",
     "test:browser": "node tests/browser-integration.mjs"

@@ -1,5 +1,26 @@
 # 📱 P2P Mobile Mesh Inference: Dynamic N-Phone Byte-Level Transformer
 
+<p align="center">
+  <a href="https://p2p-mobile-mesh.onrender.com/">
+    <img src="https://img.shields.io/badge/🌐_Live_Deployment-p2p--mobile--mesh.onrender.com-46E3B7?style=for-the-badge&logo=render&logoColor=white" alt="Live Demo on Render" />
+  </a>
+  &nbsp;
+  <a href="https://github.com/Prathamesh-000/Transformer">
+    <img src="https://img.shields.io/badge/GitHub-Repository-181717?style=for-the-badge&logo=github&logoColor=white" alt="GitHub Repo" />
+  </a>
+  &nbsp;
+  <img src="https://img.shields.io/badge/Architecture-WebRTC_P2P_Ring-00F0FF?style=for-the-badge" alt="WebRTC Ring" />
+  &nbsp;
+  <img src="https://img.shields.io/badge/Params-11.04M_FP32-FFD21E?style=for-the-badge" alt="11.04M FP32" />
+</p>
+
+<div align="center">
+  <h3>
+    🚀 <b>Live Web Deployment:</b> <a href="https://p2p-mobile-mesh.onrender.com/"><b>https://p2p-mobile-mesh.onrender.com/</b></a>
+  </h3>
+  <p><i>Zero app installs required. Open on Phone 1, scan the Master QR with 1 to 5 other smartphones, and run distributed inference directly over WebRTC!</i></p>
+</div>
+
 > **Distributed text generation for an 11.04M Micro-Transformer running across stock consumer smartphones over a local WebRTC peer-to-peer ring.**  
 > *Zero App Installations • Pure Web CPU (JavaScript) • Zero Cloud Backends • Deterministic Seed 42*
 
@@ -151,7 +172,18 @@ $$\text{base} = \lfloor 6 / N \rfloor, \quad \text{remainder} = 6 \pmod N$$
 
 ## 🚀 Quick Start Guide
 
-### Prerequisites
+### 🌐 Option A: Instant Live Web Demo (Zero Setup Required)
+You can test the distributed cluster right now directly in mobile Safari or Chrome without running a local server:
+1. Open the live deployment on **Phone 1 (Host)**: **[https://p2p-mobile-mesh.onrender.com/?role=host](https://p2p-mobile-mesh.onrender.com/?role=host)**
+2. Have 1 to 5 other smartphones scan the displayed **Master QR code**.
+3. Once all phones appear on the interactive Canvas ring, tap **"Lock Mesh & Form Ring"**.
+4. Type a prompt and tap **"Generate Across Mesh"** to watch tokens stream through the physical ring of phones!
+
+---
+
+### 💻 Option B: Local Development Setup
+
+#### Prerequisites
 - Node.js 18+
 - Python 3.8+ with PyTorch (`pip install torch numpy`)
 - Any 2 to 6 mobile phones on the same Wi-Fi network
